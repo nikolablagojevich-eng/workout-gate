@@ -1,0 +1,59 @@
+# Workout Gate — configurazione di esempio.
+# Copia in %LOCALAPPDATA%\WorkoutGate\config.yaml e modifica i valori.
+# I valori di "privacy" sono FORZATI nel codice: scriverli qui non ha effetto,
+# restano sempre disattivati.
+
+schema_version: 1
+enabled: true
+
+timer:
+  work_interval_minutes: 30
+  idle_threshold_seconds: 120
+  persistence_interval_seconds: 15
+  retry_after_technical_error_minutes: 10
+  interval_after_emergency_bypass_minutes: 10
+  max_tick_gap_seconds: 5
+
+workout:
+  exercise: squat
+  required_repetitions: 10
+  minimum_cycle_duration_seconds: 0.8
+  maximum_cycle_duration_seconds: 8.0
+  completion_message_seconds: 1.0
+
+vision:
+  camera_index: 0
+  # Modalita' di rilevamento dello squat:
+  #   torso = movimento verticale del busto/spalle (funziona con webcam che
+  #           inquadra solo testa e spalle, es. laptop). DEFAULT consigliato.
+  #   knee  = angolo del ginocchio (richiede gambe interamente in quadro).
+  exercise_mode: torso
+  # Solo modalita' torso: calo verticale minimo (frazione di frame) perche' uno
+  # squat sia "abbastanza profondo". Piu' grande se sei vicino alla webcam.
+  torso_min_drop: 0.20
+  torso_min_visibility: 0.6
+  # Solo modalita' knee:
+  min_landmark_visibility: 0.65
+  standing_knee_angle_degrees: 160
+  bottom_knee_angle_degrees: 100
+  standing_stability_seconds: 0.4
+  threshold_hysteresis_degrees: 8
+  mirror_preview: true
+  calibration_required: true
+
+# Forzati a OFF nel codice. Elencati solo per trasparenza.
+privacy:
+  save_video: false
+  save_frames: false
+  save_images: false
+  network_access: false
+  telemetry: false
+  analytics: false
+
+startup:
+  start_at_login: true
+  start_minimized_to_tray: true
+
+safety:
+  emergency_bypass_hold_seconds: 10
+  technical_fail_open: true
