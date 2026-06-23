@@ -53,6 +53,9 @@ privacy:
 startup:
   start_at_login: true
   start_minimized_to_tray: true
+  # Mostra il widget desktop con interruttore ON/OFF (per spegnere il counter
+  # al volo durante riunioni/presentazioni). Si nasconde anche dalla tray.
+  show_widget: true
 
 safety:
   emergency_bypass_hold_seconds: 10

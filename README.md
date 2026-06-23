@@ -96,6 +96,11 @@ Tutti i comandi sono anche nel menu della system tray.
 - **Gate**: finestra fullscreen topmost su tutti i monitor, "soft" (niente guerra
   di focus: e' un invito a muoverti, non un kiosk inviolabile). Intercetta ALT+F4 ed
   Esc nella propria finestra; con un bypass o un errore tecnico si chiude.
+- **Widget desktop ON/OFF**: piccola finestra sempre in primo piano, trascinabile,
+  con interruttore retro. **OFF** spegne il counter (pausa indefinita) e chiude un
+  gate eventualmente aperto, senza debito: utile prima di una riunione o
+  presentazione. **ON** riaccende. Si nasconde/mostra dalla tray
+  ("Mostra/Nascondi widget") o con `startup.show_widget`.
 
 ## Privacy
 

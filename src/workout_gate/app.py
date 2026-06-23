@@ -23,6 +23,7 @@ from .config import AppConfig
 from .gate.controller import (
     OUTCOME_BYPASS,
     OUTCOME_COMPLETED,
+    OUTCOME_SKIPPED,
     GateController,
 )
 from .idle_detector import IdleDetector
@@ -30,6 +31,7 @@ from .paths import config_path, state_path
 from .scheduler import Scheduler, SchedulerState
 from .storage import JsonStore
 from .tray import Tray, TrayCallbacks
+from .ui.desktop_widget import DesktopWidget
 from .ui.settings_window import SettingsWindow
 from .ui.stats_window import StatsWindow
 from .windows_session import SessionMonitor
@@ -83,9 +85,14 @@ class WorkoutGateApp:
                 calibrate=lambda: self._spawn("calibrate"),
                 test_camera=lambda: self._spawn("test-camera"),
                 doctor=self._show_doctor,
+                toggle_widget=self._toggle_widget,
                 quit=self.quit,
             )
         )
+
+        self.widget = DesktopWidget()
+        self.widget.turnedOn.connect(self._widget_on)
+        self.widget.turnedOff.connect(self._widget_off)
 
         self._timer = QTimer()
         self._timer.setInterval(1000)
@@ -98,7 +105,12 @@ class WorkoutGateApp:
                 "MODALITA' SVILUPPO: intervallo workout = %.0fs",
                 self.cfg.dev_work_interval_seconds,
             )
+        # Scarta comandi rimasti nel canale da prima dell'avvio (no stato spurio).
+        commands.drain_commands()
         self.tray.show()
+        if self.cfg.startup.show_widget:
+            self.widget.show()
+            self.widget.place_bottom_right()
         self._tick()
         self._timer.start()
         logger.info("Workout Gate avviato.")
@@ -107,6 +119,7 @@ class WorkoutGateApp:
     def quit(self) -> None:
         self._persist()
         self._timer.stop()
+        self.widget.hide()
         self.tray.hide()
         self.app.quit()
 
@@ -138,14 +151,15 @@ class WorkoutGateApp:
 
     def _update_status(self) -> None:
         if self._gate_active:
-            text = "Workout in corso"
-            self.tray.set_status(text)
+            self.tray.set_status("Workout in corso")
+            self.widget.set_state(enabled=True, status="in corso")
         elif self.scheduler.state is SchedulerState.PAUSED:
-            text = "In pausa"
-            self.tray.set_status(text, paused=True)
+            self.tray.set_status("In pausa", paused=True)
+            self.widget.set_state(enabled=False, status="spento")
         else:
-            text = f"Prossimo workout: {_fmt_mmss(self.scheduler.remaining_seconds)} di uso attivo"
-            self.tray.set_status(text)
+            rem = _fmt_mmss(self.scheduler.remaining_seconds)
+            self.tray.set_status(f"Prossimo workout: {rem} di uso attivo")
+            self.widget.set_state(enabled=True, status=f"tra {rem}")
 
         try:
             commands.write_status(
@@ -183,10 +197,16 @@ class WorkoutGateApp:
         elif outcome == OUTCOME_BYPASS:
             self.scheduler.on_emergency_bypass()
             self._record_bypass(str(payload) if payload else "altro")
+        elif outcome == OUTCOME_SKIPPED:
+            # OFF dal widget: nessun debito, nessuna statistica. Lo scheduler resta
+            # in pausa (spento) finche' non si riaccende con ON.
+            self.scheduler.on_workout_completed()
+            self.scheduler.pause_until_login()
         else:
             self.scheduler.on_technical_error()
             self._record_error(str(payload))
         self._persist()
+        self._update_status()
 
     # ----- statistiche -----
     def _record_completion(self) -> None:
@@ -244,6 +264,27 @@ class WorkoutGateApp:
     def _cmd_resume(self) -> None:
         self.scheduler.resume()
         self._update_status()
+
+    # ----- widget desktop ON/OFF -----
+    def _widget_on(self) -> None:
+        """ON: riaccende il counter."""
+        self.scheduler.resume()
+        self._update_status()
+
+    def _widget_off(self) -> None:
+        """OFF: spegne il counter (pausa indefinita) e chiude un eventuale gate
+        gia' aperto senza debito. Per riunioni/presentazioni."""
+        self.scheduler.pause_until_login()
+        if self._gate_active and self.controller is not None:
+            self.controller.cancel()
+        self._update_status()
+
+    def _toggle_widget(self) -> None:
+        if self.widget.isVisible():
+            self.widget.hide()
+        else:
+            self.widget.show()
+            self.widget.place_bottom_right()
 
     def _handle_external_command(self, cmd: dict) -> None:
         action = cmd.get("action")

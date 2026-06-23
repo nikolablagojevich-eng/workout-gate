@@ -39,6 +39,7 @@ class TrayCallbacks:
     calibrate: Callable[[], None]
     test_camera: Callable[[], None]
     doctor: Callable[[], None]
+    toggle_widget: Callable[[], None]
     quit: Callable[[], None]
 
 
@@ -69,6 +70,7 @@ class Tray:
         self._add(self._menu, "Riprendi", self.cb.resume)
         self._menu.addSeparator()
 
+        self._add(self._menu, "Mostra/Nascondi widget", self.cb.toggle_widget)
         self._add(self._menu, "Impostazioni", self.cb.settings)
         self._add(self._menu, "Statistiche", self.cb.stats)
         self._add(self._menu, "Calibra webcam", self.cb.calibrate)

@@ -87,6 +87,7 @@ class PrivacyConfig:
 class StartupConfig:
     start_at_login: bool = True
     start_minimized_to_tray: bool = True
+    show_widget: bool = True
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 OUTCOME_COMPLETED = "completed"
 OUTCOME_BYPASS = "bypass"
 OUTCOME_ERROR = "error"
+OUTCOME_SKIPPED = "skipped"  # gate chiuso perche' l'utente ha spento il counter (OFF)
 
 
 class GateController(QObject):
@@ -89,6 +90,10 @@ class GateController(QObject):
 
     def _on_bypass(self, category: str) -> None:
         self._finish(OUTCOME_BYPASS, category)
+
+    def cancel(self) -> None:
+        """Chiude il gate senza debito (es. l'utente ha premuto OFF: riunione)."""
+        self._finish(OUTCOME_SKIPPED, None)
 
     # ----- chiusura -----
     def _finish(self, outcome: str, payload) -> None:
