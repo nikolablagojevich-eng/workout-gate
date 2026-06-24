@@ -88,6 +88,9 @@ class StartupConfig:
     start_at_login: bool = True
     start_minimized_to_tray: bool = True
     show_widget: bool = True
+    # False (default): il widget e' agganciato allo sfondo del desktop (dietro le
+    # finestre, non appare nelle condivisioni schermo). True: sempre in primo piano.
+    widget_on_top: bool = False
 
 
 @dataclass(frozen=True)

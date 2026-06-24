@@ -56,6 +56,9 @@ startup:
   # Mostra il widget desktop con interruttore ON/OFF (per spegnere il counter
   # al volo durante riunioni/presentazioni). Si nasconde anche dalla tray.
   show_widget: true
+  # false (default): widget agganciato allo sfondo del desktop (dietro le finestre,
+  # non appare nelle condivisioni schermo). true: sempre in primo piano.
+  widget_on_top: false
 
 safety:
   emergency_bypass_hold_seconds: 10

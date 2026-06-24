@@ -111,6 +111,9 @@ class WorkoutGateApp:
         if self.cfg.startup.show_widget:
             self.widget.show()
             self.widget.place_bottom_right()
+            if not self.cfg.startup.widget_on_top:
+                self.widget.pin_to_desktop()
+                self.widget.place_bottom_right()
         self._tick()
         self._timer.start()
         logger.info("Workout Gate avviato.")
@@ -285,6 +288,9 @@ class WorkoutGateApp:
         else:
             self.widget.show()
             self.widget.place_bottom_right()
+            if not self.cfg.startup.widget_on_top:
+                self.widget.pin_to_desktop()
+                self.widget.place_bottom_right()
 
     def _handle_external_command(self, cmd: dict) -> None:
         action = cmd.get("action")

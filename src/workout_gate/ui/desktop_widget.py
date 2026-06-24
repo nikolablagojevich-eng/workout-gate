@@ -9,8 +9,11 @@ nell'app/scheduler, qui solo presentazione e stato.
 
 from __future__ import annotations
 
+import logging
+import sys
+
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QMouseEvent
+from PySide6.QtGui import QAction, QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -19,6 +22,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 _PANEL = """
 QWidget#WidgetRoot {
@@ -60,9 +65,11 @@ class DesktopWidget(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        # Niente "sempre in primo piano": il widget vive sullo sfondo del desktop
+        # (vedi pin_to_desktop), cosi' non galleggia sopra le finestre ne' appare
+        # nelle condivisioni schermo.
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
         self.setObjectName("WidgetRoot")
@@ -109,11 +116,31 @@ class DesktopWidget(QWidget):
         button.style().polish(button)
 
     def place_bottom_right(self) -> None:
-        screen = self.screen()
+        screen = QGuiApplication.primaryScreen()
         if screen is None:
             return
         geo = screen.availableGeometry()
         self.move(geo.right() - self.width() - 24, geo.bottom() - self.height() - 24)
+
+    def pin_to_desktop(self) -> None:
+        """Aggancia il widget allo sfondo del desktop (dietro le finestre, come un
+        gadget). Solo Windows; in caso di errore resta una normale finestra non
+        in primo piano (fallback silenzioso)."""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            progman = user32.FindWindowW("Progman", None)
+            if not progman:
+                return
+            # Chiede a Progman di generare il livello WorkerW dietro le icone.
+            user32.SendMessageTimeoutW(progman, 0x052C, 0, 0, 0x0002, 1000, None)
+            user32.SetParent(int(self.winId()), progman)
+            logger.info("Widget agganciato allo sfondo del desktop.")
+        except Exception:  # noqa: BLE001 - best effort, fallback a finestra normale
+            logger.exception("Aggancio del widget allo sfondo fallito (ignorato).")
 
     # ----- trascinamento + menu -----
     def mousePressEvent(self, event: QMouseEvent) -> None:
