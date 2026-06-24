@@ -55,15 +55,12 @@ class WorkoutEngine:
         frame = self.camera.read()
         obs = self.pose.process(frame)
 
-        candidates = [obs.bbox] if getattr(obs, "bbox", None) is not None else []
-        subject = self.tracker.select(candidates)
-        if subject.changed:
-            # Soggetto cambiato (es. ti sei spostato molto): resetta solo la
-            # ripetizione in corso, MAI il conteggio gia' raggiunto.
-            self.counter.soft_reset()
-
-        present = bool(obs.present and subject.present)
         if self.mode == "torso":
+            # In modalita' torso NON si usa il subject tracker: lo squat fa
+            # abbassare molto il busto nel frame e il tracker lo scambierebbe per
+            # un soggetto che se ne va, dichiarando "corpo assente" durante la
+            # discesa. La presenza la decide la visibilita' delle spalle (~1.0).
+            present = bool(obs.present)
             result = self.counter.update(
                 timestamp=timestamp,
                 body_present=present,
@@ -71,6 +68,11 @@ class WorkoutEngine:
                 visibility=getattr(obs, "shoulder_visibility", 0.0),
             )
         else:
+            candidates = [obs.bbox] if getattr(obs, "bbox", None) is not None else []
+            subject = self.tracker.select(candidates)
+            if subject.changed:
+                self.counter.soft_reset()
+            present = bool(obs.present and subject.present)
             metrics = FrameMetrics(
                 timestamp=timestamp,
                 body_present=present,

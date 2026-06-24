@@ -105,6 +105,48 @@ def test_close_is_idempotent():
     assert cam.released and pose.closed
 
 
+def torso_obs(shoulder_y: float, present: bool = True, vis: float = 0.99) -> PoseObservation:
+    # Il bbox segue il busto (cy = shoulder_y): simula il movimento dello squat
+    # che in passato confondeva il subject tracker.
+    return PoseObservation(
+        present=present,
+        knee_angle=180.0,
+        min_visibility=vis,
+        hip_y=shoulder_y + 0.2,
+        shoulder_y=shoulder_y,
+        shoulder_visibility=vis,
+        landmarks=[],
+        bbox=Candidate(0.5, shoulder_y, 0.3, 0.4),
+    )
+
+
+def test_torso_engine_counts_despite_moving_bbox():
+    from workout_gate.vision.vertical_counter import VerticalRepCounter
+
+    ys: list[float] = []
+    for _ in range(3):
+        ys += [0.40] * 6 + [0.46, 0.54, 0.60, 0.60, 0.52, 0.44, 0.40, 0.40]
+    observations = [torso_obs(y) for y in ys]
+    engine = WorkoutEngine(
+        camera=FakeCamera(),
+        pose=FakePose(observations),
+        counter=VerticalRepCounter(
+            min_drop=0.10, min_cycle_seconds=0.4, standing_stability_seconds=0.15
+        ),
+        tracker=SubjectTracker(),
+        required_reps=10,
+        mode="torso",
+    )
+    t = 0.0
+    try:
+        for _ in observations:
+            engine.step(t)
+            t += 0.12
+    finally:
+        engine.close()
+    assert engine.counter.count >= 1
+
+
 def test_nine_squats_do_not_complete():
     stream = squat_stream(9)
     engine, _, _ = make_engine([obs(a) for _, a in stream], required=10)

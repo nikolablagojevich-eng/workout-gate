@@ -60,6 +60,8 @@ class VisionWorker(QThread):
             self.failed.emit(str(exc))
             return
 
+        frames = 0
+        last_count = 0
         try:
             while self._running:
                 start = time.monotonic()
@@ -69,6 +71,24 @@ class VisionWorker(QThread):
                     logger.exception("Step visione fallito")
                     self.failed.emit(str(exc))
                     return
+
+                # Diagnostica: log a ogni squat contato e ogni ~2s lo stato.
+                frames += 1
+                if result.count != last_count:
+                    last_count = result.count
+                    logger.info("SQUAT contato: %s/%s", result.count, result.required)
+                if frames % 48 == 0:
+                    obs = result.observation
+                    base = getattr(engine.counter, "baseline", None)
+                    logger.info(
+                        "diag: present=%s sh_y=%.2f sh_vis=%.2f base=%s fase=%s count=%s",
+                        result.subject_present,
+                        getattr(obs, "shoulder_y", -1.0),
+                        getattr(obs, "shoulder_visibility", -1.0),
+                        f"{base:.2f}" if base is not None else "None",
+                        result.counter.phase_label,
+                        result.count,
+                    )
 
                 try:
                     annotated = annotate(
