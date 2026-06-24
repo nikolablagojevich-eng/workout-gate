@@ -58,7 +58,9 @@ class WorkoutEngine:
         candidates = [obs.bbox] if getattr(obs, "bbox", None) is not None else []
         subject = self.tracker.select(candidates)
         if subject.changed:
-            self.counter.reset_all()
+            # Soggetto cambiato (es. ti sei spostato molto): resetta solo la
+            # ripetizione in corso, MAI il conteggio gia' raggiunto.
+            self.counter.soft_reset()
 
         present = bool(obs.present and subject.present)
         if self.mode == "torso":
@@ -116,10 +118,11 @@ def build_counter(cfg: AppConfig) -> Any:
 
         # In modalita' torso la stabilita' tra le ripetizioni e' breve (default
         # del counter, 0.15s): non si penalizzano gli squat fatti in serie.
+        # min_cycle volutamente basso (default del counter, 0.4s): basta che le
+        # spalle scendano e risalgano, non serve uno squat profondo/lento.
         return VerticalRepCounter(
             min_drop=v.torso_min_drop,
             min_visibility=v.torso_min_visibility,
-            min_cycle_seconds=w.minimum_cycle_duration_seconds,
             max_cycle_seconds=w.maximum_cycle_duration_seconds,
         )
     return SquatCounter(
@@ -149,7 +152,9 @@ def create_engine(cfg: AppConfig) -> WorkoutEngine:
         camera=camera,
         pose=pose,
         counter=build_counter(cfg),
-        tracker=SubjectTracker(),
+        # Tracker tollerante: con un solo utente che si sposta vicino/lontano non
+        # deve scambiarlo per un soggetto nuovo a ogni movimento.
+        tracker=SubjectTracker(switch_distance=0.45, lost_grace_frames=12),
         required_reps=cfg.workout.required_repetitions,
         mode=cfg.vision.exercise_mode,
     )

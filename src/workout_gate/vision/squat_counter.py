@@ -57,6 +57,12 @@ class SquatCounter:
         self._standing_since: float | None = None
         self._reset_rep()
 
+    def soft_reset(self) -> None:
+        """Reset della sola ripetizione in corso; mantiene il conteggio."""
+        self._state = SquatState.WAITING_FOR_BODY
+        self._standing_since = None
+        self._reset_rep()
+
     def _reset_rep(self) -> None:
         self._descent_start_t: float | None = None
         self._reached_bottom = False

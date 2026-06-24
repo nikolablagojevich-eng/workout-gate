@@ -30,11 +30,11 @@ class VerticalRepCounter:
     def __init__(
         self,
         *,
-        min_drop: float = 0.20,
-        hysteresis: float = 0.03,
+        min_drop: float = 0.08,
+        hysteresis: float = 0.02,
         min_visibility: float = 0.6,
         standing_stability_seconds: float = 0.15,
-        min_cycle_seconds: float = 0.8,
+        min_cycle_seconds: float = 0.4,
         max_cycle_seconds: float = 8.0,
         baseline_track_alpha: float = 0.1,
         baseline_catch_alpha: float = 0.3,
@@ -62,6 +62,15 @@ class VerticalRepCounter:
         self._count = 0
         self._baseline: float | None = None
         self._standing_since: float | None = None
+        self._reset_rep()
+
+    def soft_reset(self) -> None:
+        """Reset SOLO della ripetizione in corso e dello stato. MANTIENE il
+        conteggio e la baseline: il totale non si annulla mai durante la sessione
+        (ne' per uno squat sbagliato, ne' per un movimento ampio o un'uscita
+        momentanea dall'inquadratura)."""
+        self._state = SquatState.WAITING_FOR_BODY
+        self._standing_since = None
         self._reset_rep()
 
     def _reset_rep(self) -> None:
@@ -130,8 +139,10 @@ class VerticalRepCounter:
         conf = visibility
 
         if not body_present or visibility < self.min_visibility:
+            # Corpo non visibile: resetta solo la ripetizione in corso, NON il
+            # conteggio (che non si annulla mai durante la sessione).
             if self._state is not SquatState.WAITING_FOR_BODY:
-                self.reset_all()
+                self.soft_reset()
             return self._result(Feedback.BODY_NOT_VISIBLE, conf)
 
         t = timestamp
@@ -140,7 +151,13 @@ class VerticalRepCounter:
             self._enter_standing(t)
             return self._result(Feedback.POSITION_DETECTED, conf)
 
-        if self._state in (SquatState.STANDING, SquatState.WAITING_FOR_BODY):
+        if self._state is SquatState.WAITING_FOR_BODY:
+            # Corpo tornato dopo un'assenza: riacquisisci la posizione eretta,
+            # mantenendo il conteggio gia' accumulato.
+            self._enter_standing(t)
+            return self._result(Feedback.POSITION_DETECTED, conf)
+
+        if self._state is SquatState.STANDING:
             self._track_baseline(signal_y)
 
         drop = signal_y - self._baseline

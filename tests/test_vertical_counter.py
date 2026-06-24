@@ -104,6 +104,32 @@ def test_no_double_count():
     assert c.count == 1
 
 
+def test_count_not_wiped_by_body_loss():
+    # Il conteggio non deve mai azzerarsi durante la sessione (solo la rep in corso).
+    c = counter()
+    t = 0.0
+    for _ in range(2):
+        seq, t = clean_rep(t)
+        run(c, seq)
+    assert c.count == 2
+    run(c, [(t + i * 0.15, 0.0, 0.0, False) for i in range(4)])  # corpo sparito
+    t += 4 * 0.15
+    assert c.count == 2  # NON azzerato
+    seq, t = clean_rep(t)
+    run(c, seq)
+    assert c.count == 3
+
+
+def test_soft_reset_keeps_count():
+    c = counter()
+    seq, _ = clean_rep(0.0)
+    run(c, seq)
+    assert c.count == 1
+    c.soft_reset()
+    assert c.count == 1  # il totale resta
+    assert c.state == SquatState.WAITING_FOR_BODY
+
+
 def test_subject_disappear_resets():
     c = counter()
     partial = [(i * 0.15, 0.66, 0.99, True) for i in range(5)]

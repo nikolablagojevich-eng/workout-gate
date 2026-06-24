@@ -63,10 +63,10 @@ class VisionConfig:
     #  - "knee": angolo del ginocchio (richiede gambe interamente in quadro).
     exercise_mode: str = "torso"
     # Modalita' torso: calo verticale minimo delle spalle (frazione di frame, 0..1)
-    # per considerare la discesa abbastanza profonda. Va dimensionato sull'ampiezza
-    # reale del movimento: piu' grande se si e' vicini alla webcam (squat "grande"
-    # nel frame). 0.20 e' un buon default per una postazione da laptop.
-    torso_min_drop: float = 0.20
+    # per contare lo squat. Volutamente sensibile: basta che le spalle scendano e
+    # risalgano, non serve uno squat profondo. Alzalo se conta movimenti involontari,
+    # abbassalo se non conta da lontano (dove il movimento appare piu' piccolo).
+    torso_min_drop: float = 0.07
     # Visibilita' minima delle spalle in modalita' torso (di norma ~1.0).
     torso_min_visibility: float = 0.6
 

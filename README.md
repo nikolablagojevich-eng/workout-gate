@@ -156,11 +156,13 @@ scripts/     run-tests.ps1 · camera_check.py
   posa piu' prominente. Una persona sullo sfondo che si muove molto puo' confondere
   il rilevamento; il subject tracker mitiga la continuita' ma non e' identificazione
   biometrica. Non c'e' garanzia assoluta anti-inganno.
-- **Modalita' torso (default) dipende dalla distanza dalla webcam.** L'ampiezza
-  verticale di uno squat nel frame cambia con quanto sei vicino: `vision.torso_min_drop`
-  (default 0.20) va alzato se sei molto vicino, abbassato se sei lontano. La baseline
-  "in piedi" si auto-tara; la soglia di profondita' no. Squat piu' veloci di
-  `minimum_cycle_duration_seconds` (0.8s) vengono scartati di proposito.
+- **Modalita' torso (default): sensibile, dipende dalla distanza.** Conta lo squat
+  dal calo verticale delle spalle (default `vision.torso_min_drop` 0.07: basta
+  scendere e risalire, non serve la profondita'). Alzalo se conta movimenti
+  involontari, abbassalo se non conta da lontano (dove il movimento appare piu'
+  piccolo). La baseline "in piedi" si auto-tara; la soglia no. **Il conteggio non
+  si azzera mai durante una sessione**: uno squat sbagliato o un'uscita momentanea
+  dall'inquadratura resettano solo la ripetizione in corso, non il totale.
 - **Il gate e' user-space**, non un blocco di sicurezza: ALT+F4 e' intercettato nella
   finestra, ma Task Manager, logout, riavvio e terminazione del processo restano
   sempre possibili (per scelta: non si tolgono all'utente le vie d'uscita).

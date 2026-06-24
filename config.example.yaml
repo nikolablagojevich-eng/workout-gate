@@ -28,9 +28,10 @@ vision:
   #           inquadra solo testa e spalle, es. laptop). DEFAULT consigliato.
   #   knee  = angolo del ginocchio (richiede gambe interamente in quadro).
   exercise_mode: torso
-  # Solo modalita' torso: calo verticale minimo (frazione di frame) perche' uno
-  # squat sia "abbastanza profondo". Piu' grande se sei vicino alla webcam.
-  torso_min_drop: 0.20
+  # Solo modalita' torso: calo verticale minimo delle spalle (frazione di frame)
+  # per contare lo squat. Sensibile: basta scendere e risalire, non serve la
+  # profondita'. Alza se conta movimenti involontari, abbassa se non conta da lontano.
+  torso_min_drop: 0.07
   torso_min_visibility: 0.6
   # Solo modalita' knee:
   min_landmark_visibility: 0.65
