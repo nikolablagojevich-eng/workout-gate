@@ -2,26 +2,23 @@
 
 Pensato per webcam che inquadrano solo testa e spalle (laptop): uno squat abbassa
 tutto il busto, e la posizione verticale delle spalle (y, cresce verso il basso)
-e' un segnale netto e sempre visibile. Stessa macchina a stati dello squat
-basato sul ginocchio (STANDING -> DESCENDING -> BOTTOM -> ASCENDING -> STANDING),
-con isteresi, debounce, durata realistica e anti-doppio-conteggio.
+e' un segnale netto e sempre visibile. Macchina a stati esplicita
+STANDING -> DESCENDING -> BOTTOM -> ASCENDING -> STANDING, con isteresi, debounce,
+durata realistica e anti-doppio-conteggio.
 
-Baseline = posizione "in piedi" (la piu' alta = y piu' piccolo). Inseguimento
-ASIMMETRICO, solo fuori da una ripetizione:
-  - se l'utente e' sopra la baseline (si e' alzato / era seduto all'avvio):
-    aggancia rapidamente verso l'alto;
-  - se e' vicino alla baseline: insegue dolcemente il riposo;
-  - se e' sotto la baseline (sta scendendo): NON segue (e' uno squat).
-Cosi' la baseline non si incastra su un picco transitorio e gestisce il gate che
-si apre mentre si e' seduti.
+Baseline = posizione "in piedi", stimata come **percentile basso della y delle
+spalle in una finestra mobile** (ultimi N secondi). Questa scelta e' robusta:
+non insegue un valore singolo (che potrebbe agganciarsi a un picco transitorio e
+restare incastrato), e si auto-corregge perche' i campioni vecchi escono dalla
+finestra. La "profondita'" e' il calo sotto la baseline.
 
-La "profondita'" e' il calo sotto la baseline; le soglie sono frazioni di
-``min_drop``, che va dimensionato sull'ampiezza reale del movimento (piu' grande
-se si e' vicini alla webcam). La stabilita' in piedi richiesta tra ripetizioni e'
-breve (0.15s), per non penalizzare gli squat fatti in serie.
+Il conteggio e' MONOTONO durante la sessione: corpo assente, soggetto cambiato o
+squat sbagliato resettano solo la ripetizione in corso, mai il totale.
 """
 
 from __future__ import annotations
+
+from collections import deque
 
 from .squat_state import CounterResult, Feedback, SquatState
 
@@ -36,8 +33,8 @@ class VerticalRepCounter:
         standing_stability_seconds: float = 0.15,
         min_cycle_seconds: float = 0.4,
         max_cycle_seconds: float = 8.0,
-        baseline_track_alpha: float = 0.1,
-        baseline_catch_alpha: float = 0.3,
+        baseline_window_seconds: float = 4.0,
+        baseline_percentile: float = 0.25,
     ) -> None:
         self.min_drop = min_drop
         self.h = hysteresis
@@ -45,8 +42,8 @@ class VerticalRepCounter:
         self.stability = standing_stability_seconds
         self.min_cycle = min_cycle_seconds
         self.max_cycle = max_cycle_seconds
-        self.track_alpha = baseline_track_alpha
-        self.catch_alpha = baseline_catch_alpha
+        self.window_seconds = baseline_window_seconds
+        self.pct = baseline_percentile
 
         self.descend_enter = self.min_drop * 0.35
         self.bottom_enter = self.min_drop
@@ -60,15 +57,14 @@ class VerticalRepCounter:
     def reset_all(self) -> None:
         self._state = SquatState.WAITING_FOR_BODY
         self._count = 0
+        self._window: deque[tuple[float, float]] = deque()
         self._baseline: float | None = None
         self._standing_since: float | None = None
         self._reset_rep()
 
     def soft_reset(self) -> None:
-        """Reset SOLO della ripetizione in corso e dello stato. MANTIENE il
-        conteggio e la baseline: il totale non si annulla mai durante la sessione
-        (ne' per uno squat sbagliato, ne' per un movimento ampio o un'uscita
-        momentanea dall'inquadratura)."""
+        """Reset SOLO della ripetizione in corso e dello stato. Mantiene conteggio
+        e finestra baseline: il totale non si annulla mai durante la sessione."""
         self._state = SquatState.WAITING_FOR_BODY
         self._standing_since = None
         self._reset_rep()
@@ -114,18 +110,16 @@ class VerticalRepCounter:
             depth_reached=self._reached_bottom,
         )
 
-    def _track_baseline(self, signal_y: float) -> None:
-        """Insegue la posizione 'in piedi'. Solo in STANDING/WAITING (mai durante uno
-        squat). Aggancia verso l'alto, insegue il riposo, non segue verso il basso."""
-        assert self._baseline is not None
-        drop = signal_y - self._baseline
-        if drop < -self.descend_enter:
-            # Sopra la baseline (alzato): aggancia rapidamente.
-            self._baseline += self.catch_alpha * (signal_y - self._baseline)
-        elif abs(drop) < self.descend_enter:
-            # Vicino: insegue dolcemente il riposo.
-            self._baseline += self.track_alpha * (signal_y - self._baseline)
-        # drop >= descend_enter: discesa -> non toccare la baseline.
+    def _update_baseline(self, t: float, y: float) -> float:
+        """Baseline = percentile basso della y su una finestra mobile. Robusta ai
+        picchi, si auto-corregge (i campioni vecchi escono)."""
+        self._window.append((t, y))
+        cutoff = t - self.window_seconds
+        while self._window and self._window[0][0] < cutoff:
+            self._window.popleft()
+        ys = sorted(v for _, v in self._window)
+        k = max(0, min(len(ys) - 1, round(self.pct * (len(ys) - 1))))
+        return ys[k]
 
     # ----- aggiornamento per-frame -----
     def update(
@@ -139,28 +133,17 @@ class VerticalRepCounter:
         conf = visibility
 
         if not body_present or visibility < self.min_visibility:
-            # Corpo non visibile: resetta solo la ripetizione in corso, NON il
-            # conteggio (che non si annulla mai durante la sessione).
             if self._state is not SquatState.WAITING_FOR_BODY:
                 self.soft_reset()
             return self._result(Feedback.BODY_NOT_VISIBLE, conf)
 
         t = timestamp
-        if self._baseline is None:
-            self._baseline = signal_y
-            self._enter_standing(t)
-            return self._result(Feedback.POSITION_DETECTED, conf)
+        self._baseline = self._update_baseline(t, signal_y)
+        drop = signal_y - self._baseline
 
         if self._state is SquatState.WAITING_FOR_BODY:
-            # Corpo tornato dopo un'assenza: riacquisisci la posizione eretta,
-            # mantenendo il conteggio gia' accumulato.
             self._enter_standing(t)
             return self._result(Feedback.POSITION_DETECTED, conf)
-
-        if self._state is SquatState.STANDING:
-            self._track_baseline(signal_y)
-
-        drop = signal_y - self._baseline
 
         if self._state is SquatState.STANDING:
             assert self._standing_since is not None
