@@ -62,6 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor", help="Diagnostica ambiente.")
     sub.add_parser("install-autostart", help="Installa l'avvio automatico al login.")
     sub.add_parser("remove-autostart", help="Rimuove l'avvio automatico.")
+    sub.add_parser("widget", help="Porta i tasti ON/OFF in primo piano (usato dall'icona desktop).")
+    sub.add_parser("install-desktop-icon", help="Crea l'icona ON/OFF sul desktop.")
+    sub.add_parser("remove-desktop-icon", help="Rimuove l'icona ON/OFF dal desktop.")
     rt = sub.add_parser("reset-timer", help="Azzera il tempo attivo accumulato.")
     rt.add_argument("--yes", action="store_true", help="Salta la conferma.")
     return p
@@ -131,8 +134,44 @@ def main(argv: list[str] | None = None) -> int:
 
         print("Autostart rimosso." if autostart.remove() else "Autostart non presente.")
         return 0
+    if command == "widget":
+        return _cmd_widget()
+    if command == "install-desktop-icon":
+        return _cmd_install_desktop_icon()
+    if command == "remove-desktop-icon":
+        from . import desktop_icon
+
+        ok = desktop_icon.remove_desktop_shortcut()
+        print("Icona rimossa." if ok else "Icona non presente.")
+        return 0
     if command == "reset-timer":
         return _cmd_reset_timer(args)
+    return 0
+
+
+def _cmd_widget() -> int:
+    if commands.is_running():
+        commands.send_command("show_widget")
+        return 0
+    # App non attiva: avviala (mostrera' il widget sullo sfondo).
+    import subprocess
+
+    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    subprocess.Popen([pythonw, "-m", "workout_gate", "run"])
+    return 0
+
+
+def _cmd_install_desktop_icon() -> int:
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QGuiApplication
+
+    _ = QGuiApplication.instance() or QGuiApplication([])
+    from . import desktop_icon
+
+    path = desktop_icon.install_desktop_shortcut()
+    print(f"Icona ON/OFF creata sul desktop: {path}")
     return 0
 
 

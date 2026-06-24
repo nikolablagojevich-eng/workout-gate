@@ -107,6 +107,9 @@ class WorkoutGateApp:
             )
         # Scarta comandi rimasti nel canale da prima dell'avvio (no stato spurio).
         commands.drain_commands()
+        from . import desktop_icon
+
+        desktop_icon.ensure_icon_file()
         self.tray.show()
         if self.cfg.startup.show_widget:
             self.widget.show()
@@ -302,6 +305,9 @@ class WorkoutGateApp:
             self._cmd_pause_until_login()
         elif action == "resume":
             self._cmd_resume()
+        elif action == "show_widget":
+            self.widget.show()
+            self.widget.bring_to_front()
         elif action == "reset_timer":
             self.scheduler.reset_timer()
             self._persist()

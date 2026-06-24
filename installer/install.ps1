@@ -41,11 +41,13 @@ Write-Host "Installo le dipendenze (puo' richiedere qualche minuto)..."
 Write-Host "`nDiagnostica ambiente:" -ForegroundColor Cyan
 & $venvPy -m workout_gate doctor
 
-# 5. Avvio automatico.
+# 5. Avvio automatico + icona ON/OFF sul desktop.
 if (-not $NoAutostart) {
     Write-Host "`nRegistro l'avvio automatico al login..."
     & $venvPy -m workout_gate install-autostart
 }
+Write-Host "Creo l'icona ON/OFF sul desktop..."
+& $venvPy -m workout_gate install-desktop-icon
 
 $venvPyw = Join-Path $root ".venv312\Scripts\pythonw.exe"
 Write-Host "`nFatto." -ForegroundColor Green

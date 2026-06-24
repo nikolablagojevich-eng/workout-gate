@@ -142,6 +142,29 @@ class DesktopWidget(QWidget):
         except Exception:  # noqa: BLE001 - best effort, fallback a finestra normale
             logger.exception("Aggancio del widget allo sfondo fallito (ignorato).")
 
+    def bring_to_front(self) -> None:
+        """Stacca dallo sfondo e porta i tasti in primo piano, cliccabili
+        (richiamato dall'icona sul desktop)."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                ctypes.windll.user32.SetParent(int(self.winId()), 0)  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                logger.exception("Distacco dallo sfondo fallito (ignorato).")
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.show()
+        self.place_bottom_right()
+        self.raise_()
+        self.activateWindow()
+
+    def send_to_background(self) -> None:
+        """Rimanda il widget sullo sfondo del desktop (dietro le finestre)."""
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        self.show()
+        self.pin_to_desktop()
+        self.place_bottom_right()
+
     # ----- trascinamento + menu -----
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -158,6 +181,9 @@ class DesktopWidget(QWidget):
 
     def contextMenuEvent(self, event) -> None:
         menu = QMenu(self)
+        bg_action = QAction("Manda sullo sfondo", menu)
+        bg_action.triggered.connect(self.send_to_background)
+        menu.addAction(bg_action)
         hide_action = QAction("Nascondi widget", menu)
         hide_action.triggered.connect(self.hide)
         menu.addAction(hide_action)
