@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -24,6 +24,41 @@ from PySide6.QtWidgets import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Costanti Win32 per mandare la finestra in fondo allo z-order, senza attivarla.
+_GWL_EXSTYLE = -20
+_WS_EX_NOACTIVATE = 0x08000000
+_HWND_BOTTOM = 1
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_NOACTIVATE = 0x0010
+_SWP_BOTTOM = _SWP_NOSIZE | _SWP_NOMOVE | _SWP_NOACTIVATE
+
+
+def _user32():
+    """user32 con tipi configurati (su 64-bit gli handle non vanno troncati)."""
+    import ctypes
+    from ctypes import wintypes
+
+    u = ctypes.windll.user32  # type: ignore[attr-defined]
+    u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.GetWindowLongW.restype = wintypes.LONG
+    u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.LONG]
+    u.SetWindowLongW.restype = wintypes.LONG
+    u.SetWindowPos.argtypes = [
+        wintypes.HWND, wintypes.HWND,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    u.SetWindowPos.restype = wintypes.BOOL
+    u.SetParent.argtypes = [wintypes.HWND, wintypes.HWND]
+    u.SetParent.restype = wintypes.HWND
+    return u
+
+
+def _as_long(value: int) -> int:
+    """Riporta un intero a LONG signed a 32 bit (evita overflow ctypes)."""
+    value &= 0xFFFFFFFF
+    return value - 0x100000000 if value & 0x80000000 else value
 
 _PANEL = """
 QWidget#WidgetRoot {
@@ -76,6 +111,10 @@ class DesktopWidget(QWidget):
         self.setStyleSheet(_PANEL)
         self.setFixedSize(196, 104)
         self._drag_offset: QPoint | None = None
+        self._front_mode = False  # True quando portato in primo piano dall'icona
+        self._bottom_timer = QTimer(self)
+        self._bottom_timer.setInterval(4000)
+        self._bottom_timer.timeout.connect(self._reassert_bottom)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 8, 12, 10)
@@ -93,10 +132,10 @@ class DesktopWidget(QWidget):
         buttons.setSpacing(8)
         self._on = QPushButton("ON")
         self._on.setObjectName("On")
-        self._on.clicked.connect(lambda: self.turnedOn.emit())
+        self._on.clicked.connect(self._clicked_on)
         self._off = QPushButton("OFF")
         self._off.setObjectName("Off")
-        self._off.clicked.connect(lambda: self.turnedOff.emit())
+        self._off.clicked.connect(self._clicked_off)
         buttons.addWidget(self._on)
         buttons.addWidget(self._off)
         root.addLayout(buttons)
@@ -115,6 +154,20 @@ class DesktopWidget(QWidget):
         button.style().unpolish(button)
         button.style().polish(button)
 
+    def _clicked_on(self) -> None:
+        self.turnedOn.emit()
+        self._return_to_background_if_summoned()
+
+    def _clicked_off(self) -> None:
+        self.turnedOff.emit()
+        self._return_to_background_if_summoned()
+
+    def _return_to_background_if_summoned(self) -> None:
+        # Se era stato richiamato in primo piano dall'icona, dopo il click torna
+        # sullo sfondo da solo (cosi' non resta davanti, es. durante una riunione).
+        if self._front_mode:
+            QTimer.singleShot(1200, self.send_to_background)
+
     def place_bottom_right(self) -> None:
         screen = QGuiApplication.primaryScreen()
         if screen is None:
@@ -123,35 +176,47 @@ class DesktopWidget(QWidget):
         self.move(geo.right() - self.width() - 24, geo.bottom() - self.height() - 24)
 
     def pin_to_desktop(self) -> None:
-        """Aggancia il widget allo sfondo del desktop (dietro le finestre, come un
-        gadget). Solo Windows; in caso di errore resta una normale finestra non
-        in primo piano (fallback silenzioso)."""
+        """Manda il widget in fondo allo z-order: visibile sul desktop ma dietro
+        TUTTE le finestre, e mai attivabile (WS_EX_NOACTIVATE). Ri-asserito a
+        intervalli. Solo Windows; in caso di errore resta una finestra normale."""
         if sys.platform != "win32":
             return
         try:
-            import ctypes
-
-            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-            progman = user32.FindWindowW("Progman", None)
-            if not progman:
-                return
-            # Chiede a Progman di generare il livello WorkerW dietro le icone.
-            user32.SendMessageTimeoutW(progman, 0x052C, 0, 0, 0x0002, 1000, None)
-            user32.SetParent(int(self.winId()), progman)
-            logger.info("Widget agganciato allo sfondo del desktop.")
+            u = _user32()
+            hwnd = int(self.winId())
+            ex = u.GetWindowLongW(hwnd, _GWL_EXSTYLE)
+            u.SetWindowLongW(hwnd, _GWL_EXSTYLE, _as_long(ex | _WS_EX_NOACTIVATE))
+            self._send_window_bottom()
+            self._bottom_timer.start()
+            logger.info("Widget mandato sul fondo (dietro le finestre).")
         except Exception:  # noqa: BLE001 - best effort, fallback a finestra normale
-            logger.exception("Aggancio del widget allo sfondo fallito (ignorato).")
+            logger.exception("Invio sul fondo fallito (ignorato).")
+
+    def _send_window_bottom(self) -> None:
+        if sys.platform != "win32":
+            return
+        try:
+            _user32().SetWindowPos(int(self.winId()), _HWND_BOTTOM, 0, 0, 0, 0, _SWP_BOTTOM)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _reassert_bottom(self) -> None:
+        if not self._front_mode and self.isVisible():
+            self._send_window_bottom()
 
     def bring_to_front(self) -> None:
-        """Stacca dallo sfondo e porta i tasti in primo piano, cliccabili
-        (richiamato dall'icona sul desktop)."""
+        """Porta i tasti in primo piano, cliccabili (richiamato dall'icona)."""
+        self._bottom_timer.stop()
         if sys.platform == "win32":
             try:
-                import ctypes
-
-                ctypes.windll.user32.SetParent(int(self.winId()), 0)  # type: ignore[attr-defined]
+                u = _user32()
+                hwnd = int(self.winId())
+                ex = u.GetWindowLongW(hwnd, _GWL_EXSTYLE)
+                u.SetWindowLongW(hwnd, _GWL_EXSTYLE, _as_long(ex & ~_WS_EX_NOACTIVATE))
+                u.SetParent(hwnd, None)  # sicurezza se mai fosse stato reparentato
             except Exception:  # noqa: BLE001
-                logger.exception("Distacco dallo sfondo fallito (ignorato).")
+                logger.exception("Ripristino in primo piano fallito (ignorato).")
+        self._front_mode = True
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.show()
         self.place_bottom_right()
@@ -159,7 +224,8 @@ class DesktopWidget(QWidget):
         self.activateWindow()
 
     def send_to_background(self) -> None:
-        """Rimanda il widget sullo sfondo del desktop (dietro le finestre)."""
+        """Rimanda il widget sul fondo (dietro le finestre)."""
+        self._front_mode = False
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
         self.show()
         self.pin_to_desktop()
