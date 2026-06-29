@@ -53,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     pause = sub.add_parser("pause", help="Mette in pausa (es. 15m, 1h).")
     pause.add_argument("duration", help="Durata: 15m, 30m, 1h, 90s...")
     sub.add_parser("resume", help="Riprende dalla pausa.")
+    sub.add_parser("on", help="Accende il Workout Gate (riprende). Usato dall'icona ON.")
+    sub.add_parser("off", help="Spegne il Workout Gate (sospende). Usato dall'icona OFF.")
     sub.add_parser("workout-now", help="Apre subito il gate.")
     sub.add_parser("calibrate", help="Calibrazione webcam interattiva.")
     sub.add_parser("test-camera", help="Test webcam con scheletro (prova inquadratura).")
@@ -104,6 +106,10 @@ def main(argv: list[str] | None = None) -> int:
         commands.send_command("resume")
         print("Ripreso.")
         return 0
+    if command == "on":
+        return _cmd_on()
+    if command == "off":
+        return _cmd_off()
     if command == "workout-now":
         if not _require_running():
             return 1
@@ -141,8 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     if command == "remove-desktop-icon":
         from . import desktop_icon
 
-        ok = desktop_icon.remove_desktop_shortcut()
-        print("Icona rimossa." if ok else "Icona non presente.")
+        ok = desktop_icon.remove_onoff_icons()
+        print("Icone rimosse." if ok else "Icone non presenti.")
         return 0
     if command == "reset-timer":
         return _cmd_reset_timer(args)
@@ -170,8 +176,35 @@ def _cmd_install_desktop_icon() -> int:
     _ = QGuiApplication.instance() or QGuiApplication([])
     from . import desktop_icon
 
-    path = desktop_icon.install_desktop_shortcut()
-    print(f"Icona ON/OFF creata sul desktop: {path}")
+    created = desktop_icon.install_onoff_icons()
+    for path in created:
+        print(f"Icona creata sul desktop: {path}")
+    return 0
+
+
+def _start_app_background() -> None:
+    import subprocess
+
+    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    subprocess.Popen([pythonw, "-m", "workout_gate", "run"])
+
+
+def _cmd_on() -> int:
+    if commands.is_running():
+        commands.send_command("resume")
+        print("Workout acceso.")
+    else:
+        _start_app_background()
+        print("Workout avviato.")
+    return 0
+
+
+def _cmd_off() -> int:
+    if commands.is_running():
+        commands.send_command("pause_until_login")
+        print("Workout spento.")
+    else:
+        print("Workout non in esecuzione.")
     return 0
 
 

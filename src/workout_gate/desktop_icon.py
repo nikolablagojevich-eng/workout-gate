@@ -1,7 +1,9 @@
-"""Icona/collegamento sul desktop per richiamare il widget ON/OFF in primo piano.
+"""Icone/collegamenti sul desktop per accendere e spegnere il Workout Gate.
 
-Genera un file ``.ico`` (simbolo di accensione) e crea un collegamento sul Desktop
-che lancia ``workout-gate widget``, il quale porta i tasti ON/OFF davanti.
+Crea due icone dirette:
+  - "Workout ON"  (simbolo power verde) -> ``workout-gate on``  (riprende)
+  - "Workout OFF" (simbolo power rosso) -> ``workout-gate off`` (sospende)
+Generano i propri file ``.ico`` (nessuna dipendenza grafica esterna).
 """
 
 from __future__ import annotations
@@ -14,14 +16,19 @@ from .paths import data_dir
 
 logger = logging.getLogger(__name__)
 
-SHORTCUT_NAME = "Workout Gate ON-OFF.lnk"
+ON_SHORTCUT = "Workout ON.lnk"
+OFF_SHORTCUT = "Workout OFF.lnk"
+_LEGACY_SHORTCUT = "Workout Gate ON-OFF.lnk"  # vecchia icona "summon", da rimuovere
+
+_GREEN = "#3ad36a"
+_RED = "#e74c3c"
 
 
-def icon_path() -> Path:
-    return data_dir() / "widget-icon.ico"
+def _icon_path(name: str) -> Path:
+    return data_dir() / f"{name}.ico"
 
 
-def _render_png(size: int = 64) -> bytes:
+def _render_png(size: int, color: str) -> bytes:
     import os
     import tempfile
 
@@ -37,7 +44,7 @@ def _render_png(size: int = 64) -> bytes:
     p.drawRoundedRect(2, 2, size - 4, size - 4, 12, 12)
 
     pen = p.pen()
-    pen.setColor(QColor("#3ad36a"))
+    pen.setColor(QColor(color))
     pen.setWidth(max(3, size // 12))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     p.setPen(pen)
@@ -48,7 +55,6 @@ def _render_png(size: int = 64) -> bytes:
     p.drawLine(cx, int(size * 0.18), cx, int(size * 0.5))
     p.end()
 
-    # Salva su file temporaneo .png (Qt deduce il formato dall'estensione).
     fd, tmp = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     try:
@@ -69,17 +75,22 @@ def _build_ico(png: bytes, size: int) -> bytes:
     return header + entry + png
 
 
-def ensure_icon_file(size: int = 64) -> Path:
-    """Genera il .ico se manca (richiede una QGuiApplication attiva)."""
-    path = icon_path()
+def ensure_icon(name: str, color: str, size: int = 64) -> Path:
+    path = _icon_path(name)
     if path.exists():
         return path
     try:
-        path.write_bytes(_build_ico(_render_png(size), size))
-        logger.info("Icona widget generata: %s", path)
+        path.write_bytes(_build_ico(_render_png(size, color), size))
+        logger.info("Icona %s generata.", name)
     except Exception:  # noqa: BLE001
-        logger.exception("Generazione icona fallita (ignorata).")
+        logger.exception("Generazione icona %s fallita (ignorata).", name)
     return path
+
+
+def ensure_icons() -> None:
+    """Genera i file .ico ON/OFF se mancano (richiede una QGuiApplication)."""
+    ensure_icon("workout-on", _GREEN)
+    ensure_icon("workout-off", _RED)
 
 
 def _desktop_dir() -> Path:
@@ -89,34 +100,52 @@ def _desktop_dir() -> Path:
     return Path(shell.SpecialFolders("Desktop"))
 
 
-def shortcut_path() -> Path:
-    return _desktop_dir() / SHORTCUT_NAME
-
-
-def install_desktop_shortcut() -> Path:
+def _make_shortcut(filename: str, action: str, ico: Path, description: str) -> Path:
     import win32com.client
 
     from .autostart import _pythonw
 
-    ico = ensure_icon_file()
-    target = shortcut_path()
+    target = _desktop_dir() / filename
     shell = win32com.client.Dispatch("WScript.Shell")
     link = shell.CreateShortcut(str(target))
     link.TargetPath = _pythonw()
-    link.Arguments = "-m workout_gate widget"
+    link.Arguments = f"-m workout_gate {action}"
     link.WorkingDirectory = str(Path.home())
-    link.WindowStyle = 7
+    link.WindowStyle = 7  # minimizzato, niente console
     if ico.exists():
         link.IconLocation = f"{ico},0"
-    link.Description = "Workout Gate ON/OFF"
+    link.Description = description
     link.save()
-    logger.info("Collegamento sul desktop creato: %s", target)
+    logger.info("Collegamento creato: %s", target)
     return target
 
 
-def remove_desktop_shortcut() -> bool:
-    target = shortcut_path()
-    if target.exists():
-        target.unlink()
-        return True
-    return False
+def install_onoff_icons() -> list[Path]:
+    """Crea le icone dirette ON (verde) e OFF (rosso) sul desktop."""
+    on_ico = ensure_icon("workout-on", _GREEN)
+    off_ico = ensure_icon("workout-off", _RED)
+    created = [
+        _make_shortcut(ON_SHORTCUT, "on", on_ico, "Accendi Workout Gate"),
+        _make_shortcut(OFF_SHORTCUT, "off", off_ico, "Spegni Workout Gate"),
+    ]
+    # Rimuove la vecchia icona unica, se presente.
+    legacy = _desktop_dir() / _LEGACY_SHORTCUT
+    if legacy.exists():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+    return created
+
+
+def remove_onoff_icons() -> bool:
+    removed = False
+    for name in (ON_SHORTCUT, OFF_SHORTCUT, _LEGACY_SHORTCUT):
+        target = _desktop_dir() / name
+        if target.exists():
+            try:
+                target.unlink()
+                removed = True
+            except OSError:
+                pass
+    return removed

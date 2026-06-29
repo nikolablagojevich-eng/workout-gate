@@ -102,6 +102,9 @@ Tutti i comandi sono anche nel menu della system tray.
   **OFF** spegne il counter (pausa indefinita) e chiude un gate eventualmente
   aperto, senza debito: utile prima di una riunione o presentazione. **ON**
   riaccende. Si nasconde/mostra dalla tray ("Mostra/Nascondi widget").
+- **Icone sul desktop**: due collegamenti diretti, **Workout ON** (verde) e
+  **Workout OFF** (rosso): un doppio click accende o spegne senza passare dal
+  widget. Si (ri)creano con `workout-gate install-desktop-icon`.
 
 ## Privacy
 

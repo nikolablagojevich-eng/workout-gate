@@ -109,7 +109,7 @@ class WorkoutGateApp:
         commands.drain_commands()
         from . import desktop_icon
 
-        desktop_icon.ensure_icon_file()
+        desktop_icon.ensure_icons()
         self.tray.show()
         if self.cfg.startup.show_widget:
             self.widget.show()
